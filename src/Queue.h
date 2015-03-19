@@ -25,14 +25,6 @@
 
 #include "Arduino.h"
 
-#if 0
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
-typedef uint8_t byte;
-typedef bool boolean;
-#endif
-
 #define QUEUESIZE			(128)
 
 class Queue
