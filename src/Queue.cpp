@@ -23,58 +23,91 @@
 #include "Queue.h"
 
 Queue::Queue()
+	: readptr(0), writeptr(0)
 {
-end=0;
 }
 
 Queue::~Queue()
 {
-	delete []array;
 }
-
 
 boolean Queue::write(byte data)
 {
-	if(bytesAvailable()<1)
+	if(((writeptr < readptr) /* Case 1: write < read */
+            && ((writeptr + 1) >= readptr))
+            || ((writeptr > readptr) /* Case 2: write > read */
+                && ((readptr == 0) &&
+					(writeptr + 1) == QUEUESIZE))) /* with datasize == 1 (byte) this is fine */
+    /* Case 3: write == read means queue is empty => no check necessary. */
 	{
+		/* queue full */
 		return false;
 	}
-	array[end] = data;
-	end++;
+
+	array[writeptr] = data;
+	++writeptr;
+	/* hopefully optimized by the compiler to &= (QUEUESIZE - 1) */
+	writeptr %= QUEUESIZE;
+
 	return true;
 }
 
 void Queue::clear()
 {
-	end=0;	
+	readptr = writeptr;
 }
 
 
 int Queue::read()
 {
-	if(end==0) return -1;
-
-	byte next = array[0];
-	for(int i=0; i<end;i++)
+	if(readptr == writeptr)
 	{
-		array[i]=array[i+1]; //yes this is a dumb but quick way of dealing with the array. Feel free to improve it...
+		/* empty queue */
+		return -1;
 	}
-	end--;
-	return next;
+
+	byte e;
+	e = array[readptr];
+
+	++readptr;
+	/* hopefully optimized by the compiler to &= (QUEUESIZE - 1) */
+	readptr %= QUEUESIZE;
+
+	return e;
+
 }
 
-byte Queue::bytesAvailable()
+int Queue::peek(size_t at) const
 {
-	return QUEUESIZE-end;
+	if(at >= bytesEnd())
+	{
+		/* not enough bytes in queue */
+		return -1;
+	}
+	size_t at_p = at + readptr;
+	at_p %= QUEUESIZE;
+	return array[at_p];
 }
 
-byte Queue::bytesEnd()
+size_t Queue::bytesAvailable() const
 {
-	return end;
+	/* -1 because one element is lost to prevent rolling-over */
+	return QUEUESIZE - bytesEnd() - 1;
 }
 
+size_t Queue::bytesEnd() const
+{
+	if(writeptr >= readptr)
+	{
+		return writeptr - readptr;
+	}
+	else
+	{
+		return QUEUESIZE - readptr;
+	}
+}
 
-byte Queue::capacity()
+size_t Queue::capacity() const
 {
 	return QUEUESIZE;
 }

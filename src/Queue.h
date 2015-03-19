@@ -25,23 +25,38 @@
 
 #include "Arduino.h"
 
-# define QUEUESIZE 128
+#if 0
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+typedef uint8_t byte;
+typedef bool boolean;
+#endif
+
+#define QUEUESIZE			(128)
 
 class Queue
 {
-	
 public:
-	byte array[QUEUESIZE];
-	byte end;
 	Queue();
 	~Queue();
-	void insert(byte data);
+
 	int read();
+	int peek(size_t at) const;
 	boolean write(byte);
+
 	void clear();
-	byte bytesAvailable();
-	byte bytesEnd();
-	byte capacity();
+	size_t capacity() const;
+
+	/* this returns how much space is left in the queue */
+	size_t bytesAvailable() const;
+
+	/* this is basically a 'size' function */
+	size_t bytesEnd() const;
+
+protected:
+	byte array[QUEUESIZE];
+	size_t readptr, writeptr;
 };
 
 #endif
