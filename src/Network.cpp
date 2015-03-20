@@ -33,8 +33,9 @@ static const uint32_t numChannels[] = NUM_CHANNELS;
 
 
 #define HOPTIME 40 //ms per hop
-#define TXTIME 2 //ms into hop
-#define TIMING_ADJUST 6900-3180 //us to add for timing adjustment
+#define TXTIME 3 //ms into hop
+#define TIMING_ADJUST 6900-3320 //us to add for timing adjustment
+//#define TIMING_ADJUST -4000 //us to add for timing adjustment
 
 
 
@@ -54,6 +55,9 @@ Network::Network(){
   txBlocked = false;
   queuedTXCommands=0;
   radioState = IDLE;
+  time.micros = 0;
+  time.millis = 0;
+  time.seconds = 0;
 }
 
 //configuration functions
@@ -80,6 +84,11 @@ boolean Network::init(byte _band) //intialize radio. we could also call this "Re
 		radio.enabled = radio.init();
 	}
   radioState=RXIDLE;
+
+  #ifdef PIN_DEBUG
+  pinMode(6, OUTPUT);
+  pinMode(7, OUTPUT);
+  #endif
 
   return radio.enabled;
 
@@ -253,18 +262,23 @@ boolean Network::softInt() //software interrupt
   if(rxPending==true)
   {
     rxPending=false;
-    #ifdef DEBUG1
+    Serial.println("Read RX");
+    #ifdef DEBUG
     Serial.println("Read RX");
     #endif
-    byte packetLength=readPacket();
+
+    int packetLength=readPacket();
+
     if(packetLength>0)
     {
-      #ifdef DEBUG1
+      #ifdef DEBUG
       Serial.print("Read ");
       Serial.print(packetLength);
       Serial.print(" bytes from radio.");
       #endif
-      processRXPacket(packetLength);
+
+    processRXPacket(packetLength);
+
     }else if(packetLength<0)
     {
       queuedRXPackets=0;
@@ -351,13 +365,13 @@ void Network::dequeueTXBytes(int index)
 
 void Network::dequeueRXPacket(int index)
 {
-  if(index==0)
+  if(index==0 && queuedRXPackets!=0)
   {
     int length = packetQueueRX[index][2];
     int i=0;
     for(i=0;i<packetQueueRX[index][2];i++)
     {
-      rxBuffer.read();
+      userBuffer.read();
     }
 
     for(i=0;i<queuedRXPackets-1;i++)
@@ -365,6 +379,7 @@ void Network::dequeueRXPacket(int index)
       packetQueueRX[i][1]=packetQueueRX[i+1][1]-length;
       packetQueueRX[i][2]=packetQueueRX[i+1][2];
     }
+
     queuedRXPackets--;
   }
 
@@ -378,7 +393,7 @@ void Network::processNormalOperation()
   if(hopNow==true)
   {
     hopNow = false;
-  //  hop();
+    hop();
   }
 
 
@@ -407,7 +422,7 @@ void Network::processNormalOperation()
     {
      // Serial.println("Processing Queue");
      // processQueue();
-     // txNext();
+      txNext();
     }
   }
 
@@ -425,11 +440,23 @@ int Network::readPacket()
 {
   byte count = radio.bytesAvailable();
 
+  #ifdef DEBUG
+  Serial.println("");
+  Serial.println("----------------");
+  Serial.println("");
+  #endif
+
  //  Serial.print("Count: ");
  //  Serial.print(count);
 
   if(count>0)
   {
+    if(count==0xFF) //The radio only has a 128 byte FIFO, so 255 represents a FIFO error (typically due to a bit flip in the length byte of the packet)
+    {
+      radio.clearRXFIFO();
+      return -1;
+    }
+
     if(radio.readRX(rxBuffer,count))
     {
       return count;
@@ -446,14 +473,16 @@ byte Network::processRXPacket(byte packetLength)
   int commandByteIndex= rxBuffer.bytesEnd()-packetLength + 3;
   int command = rxBuffer.peek(commandByteIndex);
 
+  #ifdef DEBUG
   Serial.print("Command Byte. 0x");
   Serial.println(command, HEX);
+  #endif
 
   switch(command)
   {
     case CMD_SYNCTIME:
-
-    break;
+      syncTime(packetLength);
+      break;
     case CMD_USER_ARRAY:
       queueRXPacket(packetLength);
       break;
@@ -467,10 +496,17 @@ byte Network::processRXPacket(byte packetLength)
 byte Network::queueRXPacket(byte packetLength)
 {
 
-  packetQueueRX[queuedRXPackets][0]=RX_PACKET;
-  packetQueueRX[queuedRXPackets][1]=rxBuffer.bytesEnd()-packetLength;
-  packetQueueRX[queuedRXPackets][2]=packetLength;
+  int i = rxBuffer.bytesEnd()-packetLength; //start at the beginning of the packet
+  while(i<rxBuffer.bytesEnd()) //read to the end of the packet
+  {
+    userBuffer.write(rxBuffer.array[i]); //copy values into the user buffer
+    i++;
+  }
+  rxBuffer.end-=packetLength; // shift rxBuffer queue end pointer to before our now-copied packet
 
+  packetQueueRX[queuedRXPackets][0]=RX_PACKET;
+  packetQueueRX[queuedRXPackets][1]=userBuffer.bytesEnd()-packetLength;
+  packetQueueRX[queuedRXPackets][2]=packetLength;
 
   #ifdef DEBUG
   Serial.print("Received Packet, Index #");
@@ -481,10 +517,10 @@ byte Network::queueRXPacket(byte packetLength)
 
   queuedRXPackets++;
 
-  if(rxBuffer.bytesEnd()>100 || queuedRXPackets == RX_PACKET_QUEUE_SIZE)
+  if(userBuffer.bytesEnd()>100 || queuedRXPackets == RX_PACKET_QUEUE_SIZE)
   {
     queuedRXPackets=0;
-    rxBuffer.clear();
+    userBuffer.clear();
   }
 
 	return 0;
@@ -494,25 +530,24 @@ byte Network::queueRXPacket(byte packetLength)
 void Network::syncTime(byte packetLength)
 {
  // byte txData[6] = { (byte)((micros()%1000)/4),(byte)(((time.millis%1000)>>2) & 0xFF) ,(byte)((time.millis%1000<<6) & 0xC0) | (time.seconds>>24 & 0x3F) ,(byte)(time.seconds>>16 & 0xFF) ,(byte)(time.seconds>>8 & 0xFF) ,(byte)(time.seconds & 0xFF)};
-/*
+
+
 
   timeType temp;
-  synchronized=true;
+  networkStatus=NORMAL_OPERATION;
 
-  int16_t sentMicros = ((int16_t)packetBuffer[index][5])*4;
-  int32_t sentMillis = ((int32_t)packetBuffer[index][6])<<2 | ((int32_t)(packetBuffer[index][7])>>6);
-  int32_t sentSeconds = ((int32_t)(packetBuffer[index][7]) & 0x3F)<<24 | ((int32_t)packetBuffer[index][8])<<16 | ((int32_t)packetBuffer[index][9])<<8 | packetBuffer[index][10];
-
-  int32_t localMicrosWhenReceived = ((int32_t)packetBuffer[index][PKTLENGTH+1])*4;
-  int32_t localMillisWhenReceived = ((int32_t)packetBuffer[index][PKTLENGTH+2])<<2 | ((int32_t)(packetBuffer[index][PKTLENGTH+3])>>6);
-  int32_t localSecondsWhenReceived = ((int32_t)(packetBuffer[index][PKTLENGTH+3]) & 0x3F)<<24 | ((int32_t)packetBuffer[index][PKTLENGTH+4])<<16 | ((int32_t)packetBuffer[index][PKTLENGTH+5])<<8 | (int32_t) packetBuffer[index][PKTLENGTH+6];
+  int16_t sentMicros = ((int16_t)rxBuffer.array[rxBuffer.bytesEnd()-packetLength+5])*4;
+  int32_t sentMillis = ((int32_t)rxBuffer.array[rxBuffer.bytesEnd()-packetLength+6])<<2 | ((int32_t)(rxBuffer.array[rxBuffer.bytesEnd()-packetLength+7])>>6);
+  int32_t sentSeconds = ((int32_t)(rxBuffer.array[rxBuffer.bytesEnd()-packetLength+7]) & 0x3F)<<24 | ((int32_t)rxBuffer.array[rxBuffer.bytesEnd()-packetLength+8])<<16 | ((int32_t)rxBuffer.array[rxBuffer.bytesEnd()-packetLength+9])<<8 | rxBuffer.array[rxBuffer.bytesEnd()-packetLength+10];
 
   int32_t microsNow = micros()%1000;
   int32_t millisNow = time.millis;
 
-  int32_t microsElapsed = micros()%1000-localMicrosWhenReceived;
-  int32_t millisElapsed = time.millis-localMillisWhenReceived;
-  int32_t secondsElapsed = time.seconds-localSecondsWhenReceived;
+  int32_t microsElapsed = micros()%1000-lastPacketTime.micros;
+  int32_t millisElapsed = time.millis-lastPacketTime.millis;
+  int32_t secondsElapsed = time.seconds-lastPacketTime.seconds;
+
+  rxBuffer.end-=packetLength; // shift rxBuffer queue end pointer to before our now-processed packet
 
   //pinDebug(9,LOW);
 
@@ -560,16 +595,17 @@ void Network::syncTime(byte packetLength)
   }
 
   setMicros(1000-newMicros);
+  time.micros = 1000-newMicros;
   time.millis = newMillis;
   time.seconds = newSeconds;
 
   #ifdef DEBUG_TIME
   Serial.print("Local time when recieved: ");
-  Serial.print((localMicrosWhenReceived));
+  Serial.print((lastPacketTime.micros));
   Serial.print(" uS, ");
-  Serial.print((localMillisWhenReceived));
+  Serial.print((lastPacketTime.millis));
   Serial.print(" mS, ");
-  Serial.print((localSecondsWhenReceived));
+  Serial.print((lastPacketTime.seconds));
   Serial.println(" S.");
   Serial.print("Time recieved over the air: ");
   Serial.print((sentMicros));
@@ -616,11 +652,6 @@ void Network::syncTime(byte packetLength)
 
 
 
-  if(_controlLED)
-  {
-  setLED(0,0,0);
-  }
-
 //channel = 0;
 
   #ifdef DEBUG
@@ -630,7 +661,7 @@ void Network::syncTime(byte packetLength)
   #endif
  // Serial.print(time.micros/1000);
  // Serial.println("ms.");
- */
+
 }
 
 
@@ -638,7 +669,7 @@ void Network::syncTime(byte packetLength)
 //user data functions
 int Network::dataAvailable()
 {
-  return rxBuffer.bytesEnd();
+  return userBuffer.bytesEnd();
 }
 
 int Network::nextPacketLength()
@@ -657,11 +688,8 @@ int Network::readBytes(byte *array, int packetSize)
   int i;
   for(i=0;i<packetSize;i++)
   {
-    array[i]=rxBuffer.peek(i);
+    array[i]=userBuffer.peek(i);
   }
-  Serial.println("");
-  Serial.println("----------------");
-  Serial.println("");
 
   return packetSize;
 }
@@ -673,7 +701,7 @@ boolean Network::hop()
 {
   //channel = (time.micros*200)/1000000;
 
-  //pinDebug(7, HIGH);
+  pinDebug(7, HIGH);
 
   if(channelIndex==TIMING_CH_INDEX && networkStatus!=NORMAL_OPERATION && address != MASTER_ADDRESS)
   {
@@ -685,6 +713,11 @@ boolean Network::hop()
   if(channelIndex>=50)
   {
     channelIndex=0;
+    if(address!=MASTER_ADDRESS)
+    {
+      networkStatus=SYNC_WAIT;
+    }
+
   }else{
 
   }
@@ -718,7 +751,7 @@ boolean Network::hop()
       }
     }
 
-  //  pinDebug(7, LOW);
+    pinDebug(7, LOW);
     return true;
 }
 
@@ -726,16 +759,17 @@ boolean Network::hop()
 boolean Network::tickInterrupt()
 {
   interrupts();
-  //pinDebug(6, HIGH);
+  pinDebug(6, HIGH);
 
   //deal with task scheduling
-  if(scheduledTask!=NO_TASK)
+ /* if(scheduledTask!=NO_TASK)
   {
     if(scheduledMicros<=1000) //less than 1000 means we are in the middle of a milisecond and it is time to fire. exactly 1000 means we hit a new millisecond and we must tick down to zero and fire.
     {
       if(scheduledMicros!=1000) setMicros(1000-scheduledMicros); //we are in the middle of a millisecond tick. Tell the system to finish that tick.
       scheduledMicros=0;
       softInterrupt();
+      pinDebug(6,LOW);
       return false; //tell system not to update its own millisecond timer for this tick
     }
 
@@ -747,7 +781,7 @@ boolean Network::tickInterrupt()
       updateSysTick = false;
     }
 
-  }
+  }*/
 
 
   time.millis+=1;
@@ -780,16 +814,15 @@ boolean Network::tickInterrupt()
 	case ORPHAN_WAIT:
 		break;
 	case SYNC_WAIT:
-		break;
 	case NORMAL_OPERATION:
       switch(tickTime)
       {
         case 0:
         hopNow = true;
-        if(queuedTXCommands>0)
+        if(queuedTXCommands>0 && channelIndex!= 49)
         {
-          scheduledTask=TX_TASK;
-          scheduledMicros=3000;
+       //   scheduledTask=TX_TASK;
+        //  scheduledMicros=3000;
         }
         case TXTIME:
         softInterrupt();
@@ -798,9 +831,7 @@ boolean Network::tickInterrupt()
 		break;
   }
 
-
-
-  //pinDebug(6,LOW);
+  pinDebug(6,LOW);
 
   return true; //system will update its own millisecond timer if this is true.
 }
@@ -826,7 +857,7 @@ int Network::radioInterrupt()
     {
         case RXIDLE:
         radioState=RXACTIVE;
-        //pendingRxPacket=queueRX();
+        updateLastPacketTime();
         //pinDebug(9,HIGH);
 
         break;
@@ -875,6 +906,15 @@ int Network::radioInterrupt()
   return 0;
 
 }
+
+void Network::updateLastPacketTime() //sends packet with just data (no commands added)
+{
+
+  lastPacketTime.micros = micros()%1000;
+  lastPacketTime.millis = time.millis;
+  lastPacketTime.seconds = time.seconds;
+
+ }
 
 
 void Network::transmitOrphanSearchPacket() //sends packet with just data (no commands added)
@@ -934,6 +974,7 @@ void Network::queueCommand(byte cmd, byte start, byte length)
     commandQueueTX[queuedTXCommands][1]=start;
     commandQueueTX[queuedTXCommands][2]=length;
     queuedTXCommands++;
+    #ifdef DEBUG
     Serial.print("Queuing Command ");
       Serial.print(queuedTXCommands, DEC);
       Serial.print(" = ");
@@ -942,7 +983,7 @@ void Network::queueCommand(byte cmd, byte start, byte length)
       Serial.print(start, DEC);
       Serial.print(" ");
       Serial.println(length, DEC);
-
+	#endif
     }else
     {
      // Serial.print("ERR: Cannot Queue Command, queue full.");

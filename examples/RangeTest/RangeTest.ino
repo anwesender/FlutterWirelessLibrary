@@ -23,7 +23,7 @@ Flutter flutter;
 
 byte mydata = 0;
 
-
+// To test this program, flash one board as a transmitter and then comment out this line (with //) to flash another board as a receiver
 #define TRANSMITTER
 
 
@@ -103,19 +103,20 @@ void loop() {
 
     flutter.readBytes(array,packetSize);
 
-    Serial.print("Packet Size: ");
-    Serial.println(packetSize);
-    for(int i=0;i<packetSize;i++)
-    {
-      Serial.print("[0x");
-      Serial.print(array[i], HEX);
-      Serial.print("]");
-    }
-
-    Serial.println();
-
     if(array[5]==0x63)
     {
+
+      Serial.print("Packet Size: ");
+      Serial.println(packetSize);
+      for(int i=0;i<packetSize;i++)
+      {
+        Serial.print("[0x");
+        Serial.print(array[i], HEX);
+        Serial.print("]");
+      }
+
+      Serial.println();
+
 
       mydata = array[6];
 
@@ -124,6 +125,13 @@ void loop() {
       Serial.print("RSSI: ");
       Serial.print(rssi);
       Serial.println(" dBm");
+
+      for(int j=0;j>rssi;j--)
+      {
+        Serial.print("=");
+      }
+
+      Serial.println("");
 
         switch(mydata%3)
         {
@@ -141,6 +149,7 @@ void loop() {
 
 
         }
+
     }
     
 
