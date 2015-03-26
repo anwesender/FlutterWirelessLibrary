@@ -40,7 +40,7 @@ CC1200::CC1200(){
 }
 
 void CC1200::printReg(uint16_t reg, String name)
-{ 
+{
   byte val = ReadReg(reg);
   Serial.print("Register ");
   Serial.print(name);
@@ -84,7 +84,7 @@ boolean CC1200::sleep(boolean _sleep)
 
 boolean CC1200::init()
 {
- 
+
 
   SPI.begin();//Mode 0, user controls CS pin
   SPI.setClockDivider(20, 12); //5.33 MHz - pushing it closer to 10MHz caused problems, but I didn't check the timing so it may be possible to operate faster than this
@@ -111,9 +111,9 @@ boolean CC1200::init()
 
   //rxTestMode();
   //txTestMode();
-  
+
   return true;
-  
+
 }
 
 void CC1200::setAddress(byte address)
@@ -131,11 +131,11 @@ boolean CC1200::SetFrequency(uint32_t frequency)
   SendStrobe(SFRX);
 
   int freq = 0.0065536f*frequency; //magic number comes from simplification of calculations from the datasheet with 40MHz crystal and LO Divider of 4.
-  
+
   byte f0 = 0xFF & freq;
   byte f1 = (freq & 0xFF00)>>8;
   byte f2 = (freq & 0xFF0000)>>16;
-  
+
   #ifdef DEBUG_FREQUENCY
           Serial.print("Programming Frequency ");
           Serial.print(frequency);
@@ -146,13 +146,13 @@ boolean CC1200::SetFrequency(uint32_t frequency)
           Serial.print(" 0x");
           Serial.println(f2, HEX);
   #endif
-  
+
    WriteReg(REG_FREQ0, f0);
    WriteReg(REG_FREQ1, f1);
-   WriteReg(REG_FREQ2, f2); 
+   WriteReg(REG_FREQ2, f2);
    setState(RADIO_RX);
 
-   
+
 
    if(ReadReg(REG_FREQ0)==f0 && ReadReg(REG_FREQ1)==f1 && ReadReg(REG_FREQ2)==f2)
    {
@@ -163,7 +163,7 @@ boolean CC1200::SetFrequency(uint32_t frequency)
    //digitalWrite(8,LOW);
     return false;
    }
-   
+
 
 }
 
@@ -241,7 +241,7 @@ uint16_t CC1200::registerConfig(void) {
 
 
 
-void CC1200::printBuffer(byte *buffer, byte length) 
+void CC1200::printBuffer(byte *buffer, byte length)
 {
   for(int i=0;i<length;i++)
   {
@@ -324,7 +324,7 @@ byte CC1200::readRSSI()
 //*****************************//
 //*****************************//
 
-void CC1200::reset() 
+void CC1200::reset()
 {
   SendStrobe(SRES);
   delay(5);
@@ -333,12 +333,12 @@ void CC1200::reset()
 
 
 boolean CC1200::transmit(byte *txBuffer, byte start, byte length) {
-  
+
   //while(flutterRadioState == RADIO_TXACTIVE); //wait for one packet to finish before sending another
- 
- if(asleep==true) return false; 
- 
-   
+
+ if(asleep==true) return false;
+
+
 
 
    //check FIFO and radio state here
@@ -353,7 +353,7 @@ boolean CC1200::transmit(byte *txBuffer, byte start, byte length) {
     SendStrobe(SFTX); //flush buffer if needed
    }
 
-   setState(RADIO_FSTX); //spin up frequency synthesizer 
+   setState(RADIO_FSTX); //spin up frequency synthesizer
 
    byte data[length];
 
@@ -372,10 +372,10 @@ boolean CC1200::transmit(byte *txBuffer, byte start, byte length) {
   #endif
 
 
-   setState(RADIO_TX); //spin up frequency synthesizer  
+   setState(RADIO_TX); //spin up frequency synthesizer
 
    return true;
-  
+
 }
 
 byte CC1200::getState()
@@ -526,8 +526,8 @@ byte CC1200::ReadReg(uint16_t addr)
 {
   byte data;
   ccReadReg(addr, &data, 1);
-  return data;  
-	
+  return data;
+
 }
 
 
@@ -563,7 +563,7 @@ byte CC1200::cc8BitRegAccess(byte accessType, byte addrByte, byte *pData, uint16
   /* Pull CS_N low and wait for SO to go low before communication starts */
   digitalWrite(SS,LOW);
   while(digitalRead(MISO)==1);
-  
+
   /* send register address byte */
   /* Storing chip status */
   readValue = SPItransfer(accessType|addrByte);
@@ -572,7 +572,7 @@ byte CC1200::cc8BitRegAccess(byte accessType, byte addrByte, byte *pData, uint16
  // Serial.print(accessType|addrByte,HEX);
  // Serial.print(",[0x")
   ccReadWriteBurstSingle(accessType|addrByte,pData,len,dataStart);
-  
+
   digitalWrite(SS,HIGH);
   /* return the status byte value */
   return(readValue);
@@ -619,15 +619,15 @@ byte CC1200::cc16BitRegAccess(byte accessType, byte extAddr, byte regAddr, byte 
   /* Pull CS_N low and wait for SO to go low before communication starts */
   digitalWrite(SS,LOW);
   while(digitalRead(MISO)==1);
-  
+
   /* send extended address byte with access type bits set */
   /* Storing chip status */
   readValue = SPItransfer(accessType|extAddr);
   SPItransfer(regAddr);
-  
+
   /* Communicate len number of bytes */
   ccReadWriteBurstSingle(accessType|regAddr,pData,len,0);
-  
+
   digitalWrite(SS,HIGH);
   /* return the status byte value */
   return(readValue);
@@ -710,7 +710,7 @@ void CC1200::ccReadWriteBurstSingle(byte addr, byte *pData, uint16_t len, uint16
     }
     else
     {
-      *pData = SPItransfer( 0x00); 
+      *pData = SPItransfer( 0x00);
     }
   }
   else
@@ -740,7 +740,7 @@ void CC1200::ccReadWriteBurstSingle(byte addr, byte *pData, uint16_t len, uint16
  *
  * @brief       Read value(s) from config/status/extended radio register(s).
  *              If len  = 1: Reads a single register
- *              if len != 1: Reads len register values in burst mode 
+ *              if len != 1: Reads len register values in burst mode
  *
  * input parameters
  *
@@ -757,10 +757,10 @@ byte CC1200::ccReadReg(uint16_t addr, byte *pData, byte len)
   byte tempExt  = (byte)(addr >> 8);
   byte tempAddr = (byte)(addr & 0x00FF);
   byte rc;
-  
+
   /* Checking if this is a FIFO access -> returns chip not ready  */
   if((SINGLE_TXFIFO<=tempAddr)&&(tempExt==0)) return STATUS_CHIP_RDYn_BM;
-  
+
   /* Decide what register space is accessed */
   if(tempExt==0)
   {
@@ -779,7 +779,7 @@ byte CC1200::ccReadReg(uint16_t addr, byte *pData, byte len)
  *
  * @brief       Write value(s) to config/status/extended radio register(s).
  *              If len  = 1: Writes a single register
- *              if len  > 1: Writes len register values in burst mode 
+ *              if len  > 1: Writes len register values in burst mode
  *
  * input parameters
  *
@@ -796,11 +796,11 @@ byte CC1200::ccWriteReg(uint16_t addr, byte *pData, byte len)
   byte tempExt  = (byte)(addr>>8);
   byte tempAddr = (byte)(addr & 0x00FF);
   byte rc;
-  
+
   /* Checking if this is a FIFO access - returns chip not ready */
   if((SINGLE_TXFIFO<=tempAddr)&&(tempExt==0)) return STATUS_CHIP_RDYn_BM;
-  	
-  /* Decide what register space is accessed */  
+
+  /* Decide what register space is accessed */
   if(tempExt==0)
   {
     rc = cc8BitRegAccess((RADIO_BURST_ACCESS|RADIO_WRITE_ACCESS),tempAddr,pData,len, 0);
@@ -861,12 +861,12 @@ byte CC1200::ccReadRxFifo(byte * pData, byte len, uint16_t dataStart)
 
 /******************************************************************************
  * @fn      cc120xGetTxStatus(void)
- *          
- * @brief   This function transmits a No Operation Strobe (SNOP) to get the 
+ *
+ * @brief   This function transmits a No Operation Strobe (SNOP) to get the
  *          status of the radio and the number of free bytes in the TX FIFO.
- *          
+ *
  *          Status byte:
- *          
+ *
  *          ---------------------------------------------------------------------------
  *          |          |            |                                                 |
  *          | CHIP_RDY | STATE[2:0] | FIFO_BYTES_AVAILABLE (free bytes in the TX FIFO |
@@ -879,8 +879,8 @@ byte CC1200::ccReadRxFifo(byte * pData, byte len, uint16_t dataStart)
  * @param   none
  *
  * output parameters
- *         
- * @return  rfStatus_t 
+ *
+ * @return  rfStatus_t
  *
  */
 byte CC1200::ccGetTxStatus(void)
@@ -893,13 +893,13 @@ byte CC1200::ccGetTxStatus(void)
  *
  *  @fn       cc120xGetRxStatus(void)
  *
- *  @brief   
- *            This function transmits a No Operation Strobe (SNOP) with the 
- *            read bit set to get the status of the radio and the number of 
+ *  @brief
+ *            This function transmits a No Operation Strobe (SNOP) with the
+ *            read bit set to get the status of the radio and the number of
  *            available bytes in the RXFIFO.
- *            
+ *
  *            Status byte:
- *            
+ *
  *            --------------------------------------------------------------------------------
  *            |          |            |                                                      |
  *            | CHIP_RDY | STATE[2:0] | FIFO_BYTES_AVAILABLE (available bytes in the RX FIFO |
@@ -912,8 +912,8 @@ byte CC1200::ccGetTxStatus(void)
  * @param     none
  *
  * output parameters
- *         
- * @return    rfStatus_t 
+ *
+ * @return    rfStatus_t
  *
  */
 byte CC1200::ccGetRxStatus(void)
@@ -973,20 +973,26 @@ boolean CC1200::readRX(Queue& rxBuffer, byte bytesToRead)
             SendStrobe(SFRX);
             setState(RADIO_RX);
           } else {
-
-              // Read n bytes from RX FIFO
-               ccReadRxFifo(rxBuffer.array, (uint16_t)bytesToRead, rxBuffer.end);
+            //byte buffer[QUEUESIZE];
+            byte buffer[bytesToRead];
+            // Read n bytes from RX FIFO
+            ccReadRxFifo(buffer, (uint16_t) bytesToRead, 0);
 
               // Check CRC ok (CRC_OK: bit7 in second status byte)
               // This assumes status bytes are appended in RX_FIFO
                // (PKT_CFG1.APPEND_STATUS = 1)
               // If CRC is disabled the CRC_OK field will read 1
-              if(rxBuffer.array[rxBuffer.end+bytesToRead - 1] & 0x80) {
+              if(buffer[bytesToRead - 1] & 0x80) {
                //  Serial.println("CRC OK");
                // Update packet counter
                 //  packetCounter++;
                  dataGood=true;
-                 rxBuffer.end = rxBuffer.end+bytesToRead;
+                 //rxBuffer.end = rxBuffer.end+bytesToRead;
+                size_t i;
+                for(i = 0; i < bytesToRead; ++i)
+                {
+                    rxBuffer.write(buffer[i]);
+                }
 
               }else{
                 #ifdef DEBUG
@@ -1002,11 +1008,11 @@ boolean CC1200::readRX(Queue& rxBuffer, byte bytesToRead)
     Serial.print("RX buffer contains ");
     Serial.print(bytesToRead);
     Serial.println(" bytes.");
-    printBuffer(rxBuffer.array,bytesToRead);
+    //printBuffer(rxBuffer.array,bytesToRead);
     }
     #endif
-   
-  
+
+
   return dataGood;
 }
 

@@ -495,14 +495,22 @@ byte Network::processRXPacket(byte packetLength)
 
 byte Network::queueRXPacket(byte packetLength)
 {
-
-  int i = rxBuffer.bytesEnd()-packetLength; //start at the beginning of the packet
-  while(i<rxBuffer.bytesEnd()) //read to the end of the packet
+  size_t i;
+  for(i = 0; i < packetLength; ++i)
   {
-    userBuffer.write(rxBuffer.array[i]); //copy values into the user buffer
-    i++;
-  }
-  rxBuffer.end-=packetLength; // shift rxBuffer queue end pointer to before our now-copied packet
+      int c = rxBuffer.read();
+      if(c > 0)
+      {
+        userBuffer.write((byte) c);
+      }
+#ifdef DEBUG
+      else
+      {
+          Serial.print("Some queing bug detected.\n");
+          // assert(false);
+      }
+#endif
+}
 
   packetQueueRX[queuedRXPackets][0]=RX_PACKET;
   packetQueueRX[queuedRXPackets][1]=userBuffer.bytesEnd()-packetLength;
